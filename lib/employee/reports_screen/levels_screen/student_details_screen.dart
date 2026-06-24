@@ -239,26 +239,6 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen>
     }
   }
 
-  String _calculateAge(String? birthDateStr) {
-    if (birthDateStr == null) return "---";
-    try {
-      DateTime birthDate = DateTime.parse(birthDateStr);
-      DateTime today = DateTime.now();
-      int age = today.year - birthDate.year;
-      if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
-        age--;
-      }
-      return age.toString();
-    } catch (e) {
-      return "---";
-    }
-  }
-
-  String _formatSessions(List<dynamic>? sessions) {
-    if (sessions == null || sessions.isEmpty) return "---";
-    return sessions.map((s) => "${s['day']} (${s['hour']})").join(" - ");
-  }
-
   Widget _infoCard({required String title, required List<Widget> children}) {
     return Container(
       width: double.infinity,

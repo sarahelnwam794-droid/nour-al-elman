@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/server_date_utils.dart';
 
 TeacherModel teacherModelFromJson(String str) => TeacherModel.fromJson(json.decode(str));
 
@@ -31,10 +32,7 @@ class TeacherData {
   factory TeacherData.fromJson(Map<String, dynamic> json) {
     return TeacherData(
       id: json["id"],
-      // التعديل هنا: إذا كان التاريخ نل أو تاريخ افتراضي غير صحيح (0001)، يرجع تاريخ اليوم
-      joinDate: (json["joinDate"] == null || json["joinDate"] == "0001-01-01T00:00:00")
-          ? DateTime.now()
-          : DateTime.parse(json["joinDate"]),
+      joinDate: ServerDateUtils.parseJoinDate(json["joinDate"]),
       loc: json["loc"] == null ? null : Loc.fromJson(json["loc"]),
       name: json["name"],
       ssn: json["ssn"],

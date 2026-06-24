@@ -298,21 +298,6 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  Future<void> _updateWithFallback(String? token, Map<String, dynamic> body) async {
-    final String fallbackUrl = '$baseUrl/Students';
-    final response = await http.put(
-      Uri.parse(fallbackUrl),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode(body),
-    );
-    if (response.statusCode == 200 || response.statusCode == 204) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم التحديث بنجاح (رابط بديل)")));
-      Navigator.pop(context, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("فشل التحديث النهائي 404")));
-    }
-  }
-
   Widget _buildLabel(String text, {bool isRequired = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

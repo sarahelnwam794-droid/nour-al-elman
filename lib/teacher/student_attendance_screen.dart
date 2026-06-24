@@ -5,11 +5,33 @@ import 'dart:ui' as ui;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// ============================================================================
+// 🎨 الألوان الموحدة
+// ============================================================================
+
+class _AppColors {
+  static const Color kDarkBlue = Color(0xFF07427C);
+  static const Color kOrange = Color(0xFFC66422);
+  static const Color kBg = Color(0xFFF4F6FA);
+  static const Color kBorder = Color(0xFFDDE3EE);
+  static const Color kSuccessGreen = Color(0xFF2E7D32);
+  static const Color kWhite = Color(0xFFFFFFFF);
+  static const Color kTextDark = Color(0xFF1A2340);
+}
+
+// ============================================================================
+// 📦 Model
+// ============================================================================
+
 class Student {
   final int id;
   final String name;
   Student({required this.id, required this.name});
 }
+
+// ============================================================================
+// 📱 StudentAttendanceScreen
+// ============================================================================
 
 class StudentAttendanceScreen extends StatefulWidget {
   final int groupId;
@@ -27,14 +49,13 @@ class StudentAttendanceScreen extends StatefulWidget {
 
 class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     with WidgetsBindingObserver {
-
-  static const Color kDarkBlue = Color(0xFF07427C);
-  static const Color kOrange   = Color(0xFFC66422);
-  static const Color kBg       = Color(0xFFF4F6FA);
-  static const Color kBorder   = Color(0xFFDDE3EE);
+  static const Color kDarkBlue = _AppColors.kDarkBlue;
+  static const Color kOrange = _AppColors.kOrange;
+  static const Color kBg = _AppColors.kBg;
+  static const Color kBorder = _AppColors.kBorder;
 
   bool _isLoading = false;
-  bool _isSaving  = false;
+  bool _isSaving = false;
 
   Map<int, List<Map<String, dynamic>>> _historyByStudent = {};
   late List<Map<String, dynamic>> _newEntries;
@@ -44,7 +65,10 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   String get _cacheKey =>
       "att_${widget.groupId}_${DateFormat('yyyy-MM-dd').format(DateTime.now())}";
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ============================================================================
+  // 🔄 دورة الحياة
+  // ============================================================================
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +90,10 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     }
   }
 
+  // ============================================================================
+  // 💾 إدارة الكاش
+  // ============================================================================
+
   Future<void> _loadCachedThenFetch() async {
     await _loadFromCache();
     await _fetchAndFillForm();
@@ -74,17 +102,21 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   Future<void> _loadFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw   = prefs.getString(_cacheKey);
+      final raw = prefs.getString(_cacheKey);
       if (raw == null) return;
+
       final List decoded = json.decode(raw);
       if (!mounted) return;
+
       setState(() {
         _newEntries = widget.students.map((s) {
           final cached = decoded.firstWhere(
                 (e) => e["stId"] == s.id,
             orElse: () => null,
           );
-          return cached != null ? Map<String, dynamic>.from(cached) : _emptyEntry(s);
+          return cached != null
+              ? Map<String, dynamic>.from(cached)
+              : _emptyEntry(s);
         }).toList();
       });
     } catch (_) {}
@@ -98,73 +130,84 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   }
 
   Map<String, dynamic> _emptyEntry(Student s) => {
-    "stId"   : s.id,
-    "name"   : s.name,
-    "status" : false,
+    "stId": s.id,
+    "name": s.name,
+    "status": false,
     "oldSave": null,
     "newSave": null,
-    "note"   : "",
-    "points" : "",
+    "note": "",
+    "points": "",
   };
+
+  // ============================================================================
+  // 📥 جلب البيانات
+  // ============================================================================
 
   Future<void> _fetchAndFillForm() async {
     if (mounted) setState(() => _isLoading = true);
+
     try {
-      final url = "https://nourelman.runasp.net/api/Group/GetGroupAttendace?GroupId=${widget.groupId}";
+      final url =
+          "https://nourelman.runasp.net/api/Group/GetGroupAttendace?GroupId=${widget.groupId}";
       final res = await http.get(Uri.parse(url));
+
       if (res.statusCode != 200) return;
 
-      final List raw           = json.decode(res.body)["data"] ?? [];
-      final String todayDate   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final List raw = json.decode(res.body)["data"] ?? [];
+      final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
       final Map<int, Map<String, dynamic>> todayLatest = {};
       final Map<int, List<Map<String, dynamic>>> history = {};
 
       for (final item in raw) {
-        final int stId        = item["studentId"] ?? 0;
+        final int stId = item["studentId"] ?? 0;
         final String? dateStr = item["createDate"];
         if (dateStr == null) continue;
+
         final bool isToday = dateStr.substring(0, 10) == todayDate;
 
         if (isToday) {
-          final int currentId  = item["id"] ?? 0;
+          final int currentId = item["id"] ?? 0;
           final int existingId = todayLatest[stId]?["_id"] ?? -1;
+
           if (currentId > existingId) {
             todayLatest[stId] = {
-              "_id"    : currentId,
+              "_id": currentId,
               "present": item["isPresent"] ?? false,
               "oldSave": _toRating(item["oldAttendanceNote"]),
               "newSave": _toRating(item["newAttendanceNote"]),
-              "note"   : item["note"] ?? "",
-              "points" : (item["points"] ?? 0).toString(),
+              "note": item["note"] ?? "",
+              "points": (item["points"] ?? 0).toString(),
             };
           }
         } else {
           history.putIfAbsent(stId, () => []);
           history[stId]!.add({
-            "isPresent"        : item["isPresent"] ?? false,
+            "isPresent": item["isPresent"] ?? false,
             "oldAttendanceNote": _toRating(item["oldAttendanceNote"]),
             "newAttendanceNote": _toRating(item["newAttendanceNote"]),
-            "note"             : item["note"] ?? "",
-            "points"           : item["points"] ?? 0,
-            "createDate"       : dateStr,
+            "note": item["note"] ?? "",
+            "points": item["points"] ?? 0,
+            "createDate": dateStr,
           });
         }
       }
 
       if (!mounted) return;
+
       setState(() {
         _historyByStudent = history;
         _newEntries = widget.students.map((s) {
           final rec = todayLatest[s.id];
           if (rec != null) {
             return {
-              "stId"   : s.id,
-              "name"   : s.name,
-              "status" : rec["present"],
+              "stId": s.id,
+              "name": s.name,
+              "status": rec["present"],
               "oldSave": rec["oldSave"],
               "newSave": rec["newSave"],
-              "note"   : rec["note"],
-              "points" : rec["points"],
+              "note": rec["note"],
+              "points": rec["points"],
             };
           }
           return _newEntries.firstWhere(
@@ -176,27 +219,68 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
 
       await _saveToCache();
     } catch (e) {
-      debugPrint("Fetch error: $e");
+      debugPrint("❌ Fetch error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _fetchHistoryOnly() async {
+    try {
+      final url =
+          "https://nourelman.runasp.net/api/Group/GetGroupAttendace?GroupId=${widget.groupId}";
+      final res = await http.get(Uri.parse(url));
+
+      if (res.statusCode != 200) return;
+
+      final List raw = json.decode(res.body)["data"] ?? [];
+      final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      final Map<int, List<Map<String, dynamic>>> history = {};
+
+      for (final item in raw) {
+        final int stId = item["studentId"] ?? 0;
+        final String? dateStr = item["createDate"];
+        if (dateStr == null) continue;
+
+        if (dateStr.substring(0, 10) != todayDate) {
+          history.putIfAbsent(stId, () => []);
+          history[stId]!.add({
+            "isPresent": item["isPresent"] ?? false,
+            "oldAttendanceNote": _toRating(item["oldAttendanceNote"]),
+            "newAttendanceNote": _toRating(item["newAttendanceNote"]),
+            "note": item["note"] ?? "",
+            "points": item["points"] ?? 0,
+            "createDate": dateStr,
+          });
+        }
+      }
+
+      if (mounted) setState(() => _historyByStudent = history);
+    } catch (e) {
+      debugPrint("❌ History fetch error: $e");
+    }
+  }
+
+  // ============================================================================
+  // 💾 حفظ البيانات
+  // ============================================================================
+
   Future<void> _saveNewRecords() async {
-    setState(() => _isSaving = true);
+    if (mounted) setState(() => _isSaving = true);
 
     final payload = _newEntries.map((s) => {
-      "id"               : 0,
-      "studentId"        : s["stId"],
-      "groupId"          : widget.groupId,
-      "isPresent"        : s["status"],
-      "points"           : int.tryParse(s["points"]?.toString() ?? "0") ?? 0,
-      "note"             : s["note"] ?? "",
+      "id": 0,
+      "studentId": s["stId"],
+      "groupId": widget.groupId,
+      "isPresent": s["status"],
+      "points": int.tryParse(s["points"]?.toString() ?? "0") ?? 0,
+      "note": s["note"] ?? "",
       "newAttendanceNote": _toIndex(s["newSave"]),
       "oldAttendanceNote": _toIndex(s["oldSave"]),
-      "createDate"       : DateTime.now().toIso8601String(),
-      "createBy"         : "Teacher",
-      "createFrom"       : "Mobile",
+      "createDate": DateTime.now().toIso8601String(),
+      "createBy": "Teacher",
+      "createFrom": "Mobile",
     }).toList();
 
     try {
@@ -207,52 +291,24 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
       );
 
       if (res.statusCode == 200 || res.statusCode == 201) {
-        _showToast(" تم الحفظ بنجاح", kDarkBlue);
+        _showToast("✅ تم الحفظ بنجاح", kDarkBlue);
         await _saveToCache();
-        _fetchHistoryOnly();
+        await _fetchHistoryOnly();
       } else {
-        _showToast(" خطأ: ${res.statusCode}", Colors.red);
-        debugPrint("Save error body: ${res.body}");
+        _showToast("❌ خطأ: ${res.statusCode}", Colors.red);
+        debugPrint("❌ Save error body: ${res.body}");
       }
     } catch (e) {
-      _showToast(" فشل الاتصال", Colors.red);
+      debugPrint("❌ Save error: $e");
+      _showToast("❌ فشل الاتصال", Colors.red);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  Future<void> _fetchHistoryOnly() async {
-    try {
-      final url = "https://nourelman.runasp.net/api/Group/GetGroupAttendace?GroupId=${widget.groupId}";
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode != 200) return;
-
-      final List raw         = json.decode(res.body)["data"] ?? [];
-      final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-      final Map<int, List<Map<String, dynamic>>> history = {};
-      for (final item in raw) {
-        final int stId        = item["studentId"] ?? 0;
-        final String? dateStr = item["createDate"];
-        if (dateStr == null) continue;
-        if (dateStr.substring(0, 10) != todayDate) {
-          history.putIfAbsent(stId, () => []);
-          history[stId]!.add({
-            "isPresent"        : item["isPresent"] ?? false,
-            "oldAttendanceNote": _toRating(item["oldAttendanceNote"]),
-            "newAttendanceNote": _toRating(item["newAttendanceNote"]),
-            "note"             : item["note"] ?? "",
-            "points"           : item["points"] ?? 0,
-            "createDate"       : dateStr,
-          });
-        }
-      }
-      if (mounted) setState(() => _historyByStudent = history);
-    } catch (e) {
-      debugPrint("History fetch error: $e");
-    }
-  }
-
+  // ============================================================================
+  // 🧩 دوال مساعدة
+  // ============================================================================
 
   String? _toRating(dynamic index) {
     if (index == null) return null;
@@ -269,16 +325,26 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
 
   void _showToast(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, textAlign: TextAlign.center,
-          style: const TextStyle(fontFamily: 'Almarai')),
-      backgroundColor: color,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontFamily: 'Almarai'),
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
   }
 
-
+  // ============================================================================
+  // 🏗️ بناء الواجهة
+  // ============================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +354,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
         backgroundColor: kBg,
         bottomNavigationBar: _buildSaveButton(),
         body: _isLoading && _newEntries.every((e) => e["status"] == false)
-            ? const Center(child: CircularProgressIndicator(color: kDarkBlue))
+            ? const Center(
+          child: CircularProgressIndicator(color: kDarkBlue),
+        )
             : SingleChildScrollView(
           child: Column(
             children: [
@@ -302,38 +370,47 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     );
   }
 
-  static const double _c1  = 44;
-  static const double _c4  = 44;
+  // ============================================================================
+  // 📋 نموذج الحضور
+  // ============================================================================
+
+  static const double _c1 = 44;
+  static const double _c4 = 44;
   static const double _gap = 4;
 
   Widget _buildFormSection() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _AppColors.kWhite,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: kBorder),
-        boxShadow: [BoxShadow(
+        boxShadow: [
+          BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
-            offset: const Offset(0, 3))],
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final double available =
               constraints.maxWidth - 16 - _c1 - _c4 - (_gap * 4);
-          final double cName   = available * 0.35;
+          final double cName = available * 0.35;
           final double cOldNew = available * 0.325;
+
           Widget colHeader(String t, double w) => SizedBox(
             width: w,
             child: Text(
               t,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                  fontFamily: 'Almarai'),
+                color: _AppColors.kWhite,
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                fontFamily: 'Almarai',
+              ),
             ),
           );
 
@@ -345,8 +422,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
                 decoration: const BoxDecoration(
                   color: kDarkBlue,
                   borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(13),
-                      topRight: Radius.circular(13)),
+                    topLeft: Radius.circular(13),
+                    topRight: Radius.circular(13),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -378,33 +456,35 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   }
 
   Widget _buildRow(int i, double cName, double cOldNew) {
-    final entry   = _newEntries[i];
+    final entry = _newEntries[i];
     final present = entry["status"] == true;
     final hasNote = entry["note"]?.toString().trim().isNotEmpty == true;
 
     return Container(
-      color: i % 2 == 0 ? Colors.white : const Color(0xFFF8F9FC),
+      color: i % 2 == 0 ? _AppColors.kWhite : const Color(0xFFF8F9FC),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-
+          // ✅ اسم الطالب
           SizedBox(
             width: cName,
             child: Text(
               entry["name"],
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A2340),
-                  fontFamily: 'Almarai'),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _AppColors.kTextDark,
+                fontFamily: 'Almarai',
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           SizedBox(width: _gap),
 
+          // ✅ Checkbox الحضور
           SizedBox(
             width: _c1,
             child: Center(
@@ -414,7 +494,8 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
                   value: present,
                   activeColor: kDarkBlue,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   onChanged: (v) async {
                     setState(() {
                       final u = Map<String, dynamic>.from(_newEntries[i]);
@@ -432,6 +513,8 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
             ),
           ),
           SizedBox(width: _gap),
+
+          // ✅ حفظ قديم
           SizedBox(
             width: cOldNew,
             child: _IndependentDrop(
@@ -451,6 +534,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
           ),
           SizedBox(width: _gap),
 
+          // ✅ حفظ جديد
           SizedBox(
             width: cOldNew,
             child: _IndependentDrop(
@@ -470,6 +554,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
           ),
           SizedBox(width: _gap),
 
+          // ✅ زر التعليق
           SizedBox(
             width: _c4,
             child: Center(
@@ -500,17 +585,22 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     );
   }
 
+  // ============================================================================
+  // 💾 زر الحفظ
+  // ============================================================================
+
   Widget _buildSaveButton() {
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _AppColors.kWhite,
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 10,
-                offset: const Offset(0, -3))
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
           ],
         ),
         child: SizedBox(
@@ -520,29 +610,43 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
             style: ElevatedButton.styleFrom(
               backgroundColor: kDarkBlue,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
               elevation: 0,
             ),
             onPressed: _isSaving ? null : _saveNewRecords,
             icon: _isSaving
                 ? const SizedBox(
-                width: 18, height: 18,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2))
-                : const Icon(Icons.save_rounded, color: Colors.white, size: 18),
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                color: _AppColors.kWhite,
+                strokeWidth: 2,
+              ),
+            )
+                : const Icon(
+              Icons.save_rounded,
+              color: _AppColors.kWhite,
+              size: 18,
+            ),
             label: Text(
               _isSaving ? "جاري الحفظ..." : "حفظ التعديلات",
               style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  fontFamily: 'Almarai'),
+                color: _AppColors.kWhite,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                fontFamily: 'Almarai',
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  // ============================================================================
+  // 📜 سجل الحضور
+  // ============================================================================
 
   Widget _buildHistorySection() {
     if (_historyByStudent.isEmpty) return const SizedBox.shrink();
@@ -556,12 +660,15 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
             children: const [
               Icon(Icons.history_rounded, size: 16, color: kDarkBlue),
               SizedBox(width: 6),
-              Text("سجل الحضور السابق",
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: kDarkBlue,
-                      fontFamily: 'Almarai')),
+              Text(
+                "سجل الحضور السابق",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: kDarkBlue,
+                  fontFamily: 'Almarai',
+                ),
+              ),
             ],
           ),
         ),
@@ -571,54 +678,57 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
           itemCount: widget.students.length,
           itemBuilder: (_, si) {
-            final st      = widget.students[si];
+            final st = widget.students[si];
             final records = _historyByStudent[st.id] ?? [];
             if (records.isEmpty) return const SizedBox.shrink();
 
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _AppColors.kWhite,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: kBorder),
               ),
               child: ExpansionTile(
-                tilePadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                childrenPadding:
-                const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                 leading: CircleAvatar(
                   radius: 16,
                   backgroundColor: kDarkBlue.withOpacity(0.1),
                   child: Text(
                     st.name.isNotEmpty ? st.name[0] : "?",
                     style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: kDarkBlue),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: kDarkBlue,
+                    ),
                   ),
                 ),
-                title: Text(st.name,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A2340),
-                        fontFamily: 'Almarai')),
+                title: Text(
+                  st.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _AppColors.kTextDark,
+                    fontFamily: 'Almarai',
+                  ),
+                ),
                 trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: kDarkBlue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text("${records.length} سجل",
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: kDarkBlue,
-                          fontWeight: FontWeight.bold)),
+                  child: Text(
+                    "${records.length} سجل",
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: kDarkBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-                children:
-                records.map((rec) => _buildHistoryCard(rec)).toList(),
+                children: records.map((rec) => _buildHistoryCard(rec)).toList(),
               ),
             );
           },
@@ -630,6 +740,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   Widget _buildHistoryCard(Map<String, dynamic> rec) {
     final bool present = rec["isPresent"] == true;
     String dateStr = "--";
+
     try {
       if (rec["createDate"] != null) {
         final d = DateTime.parse(rec["createDate"]);
@@ -645,8 +756,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
         borderRadius: BorderRadius.circular(10),
         border: Border(
           right: BorderSide(
-              color: present ? const Color(0xFF2E7D32) : Colors.red.shade300,
-              width: 3),
+            color: present ? _AppColors.kSuccessGreen : Colors.red.shade300,
+            width: 3,
+          ),
         ),
       ),
       child: Column(
@@ -655,20 +767,24 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
           Row(
             children: [
               Icon(
-                  present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                  size: 15,
-                  color: present ? const Color(0xFF2E7D32) : Colors.red),
+                present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                size: 15,
+                color: present ? _AppColors.kSuccessGreen : Colors.red,
+              ),
               const SizedBox(width: 5),
               Text(
                 present ? "حضور" : "غياب",
                 style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: present ? const Color(0xFF2E7D32) : Colors.red),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: present ? _AppColors.kSuccessGreen : Colors.red,
+                ),
               ),
               const Spacer(),
-              Text(dateStr,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(
+                dateStr,
+                style: const TextStyle(fontSize: 10, color: Colors.grey),
+              ),
             ],
           ),
           if (present) ...[
@@ -676,33 +792,36 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
             Row(
               children: [
                 _Chip(
-                    label: "حفظ قديم",
-                    value: rec["oldAttendanceNote"] ?? "--",
-                    color: kDarkBlue),
+                  label: "حفظ قديم",
+                  value: rec["oldAttendanceNote"] ?? "--",
+                  color: kDarkBlue,
+                ),
                 const SizedBox(width: 6),
                 _Chip(
-                    label: "حفظ جديد",
-                    value: rec["newAttendanceNote"] ?? "--",
-                    color: kOrange),
+                  label: "حفظ جديد",
+                  value: rec["newAttendanceNote"] ?? "--",
+                  color: kOrange,
+                ),
                 const SizedBox(width: 6),
                 _Chip(
-                    label: "نقاط",
-                    value: "${rec["points"] ?? 0}",
-                    color: const Color(0xFF2E7D32)),
+                  label: "نقاط",
+                  value: "${rec["points"] ?? 0}",
+                  color: _AppColors.kSuccessGreen,
+                ),
               ],
             ),
             if (rec["note"]?.toString().trim().isNotEmpty == true) ...[
               const SizedBox(height: 6),
               Row(
                 children: [
-                  const Icon(Icons.comment_outlined,
-                      size: 12, color: Colors.grey),
+                  const Icon(Icons.comment_outlined, size: 12, color: Colors.grey),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(rec["note"],
-                        style:
-                        const TextStyle(fontSize: 11, color: Colors.grey),
-                        overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      rec["note"],
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -713,55 +832,73 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     );
   }
 
+  // ============================================================================
+  // 📝 حوار التعليق
+  // ============================================================================
+
   void _showNoteDialog(int i) {
-    final noteCtrl   = TextEditingController(text: _newEntries[i]["note"]);
+    final noteCtrl = TextEditingController(text: _newEntries[i]["note"]);
     final pointsCtrl = TextEditingController(
-        text: _newEntries[i]["points"]?.toString() ?? "");
+      text: _newEntries[i]["points"]?.toString() ?? "",
+    );
 
     showDialog(
       context: context,
       builder: (_) => Directionality(
         textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: _AppColors.kWhite,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          title: const Text("تعليق ونقاط",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: kDarkBlue,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Almarai')),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "تعليق ونقاط",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: kDarkBlue,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Almarai',
+            ),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _dialogField("التعليق", noteCtrl, maxLines: 3),
               const SizedBox(height: 12),
-              _dialogField("النقاط", pointsCtrl,
-                  keyboardType: TextInputType.number),
+              _dialogField(
+                "النقاط",
+                pointsCtrl,
+                keyboardType: TextInputType.number,
+              ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("إلغاء",
-                  style: TextStyle(color: Colors.red)),
+              child: const Text(
+                "إلغاء",
+                style: TextStyle(color: Colors.red),
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: kDarkBlue,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8))),
+                backgroundColor: kDarkBlue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
               onPressed: () async {
                 setState(() {
-                  _newEntries[i]["note"]   = noteCtrl.text;
+                  _newEntries[i]["note"] = noteCtrl.text;
                   _newEntries[i]["points"] = pointsCtrl.text;
                 });
                 await _saveToCache();
                 if (mounted) Navigator.pop(context);
               },
-              child: const Text("حفظ",
-                  style: TextStyle(color: Colors.white)),
+              child: const Text(
+                "حفظ",
+                style: TextStyle(color: _AppColors.kWhite),
+              ),
             ),
           ],
         ),
@@ -769,17 +906,24 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
     );
   }
 
-  Widget _dialogField(String label, TextEditingController ctrl,
-      {int maxLines = 1, TextInputType? keyboardType}) {
+  Widget _dialogField(
+      String label,
+      TextEditingController ctrl, {
+        int maxLines = 1,
+        TextInputType? keyboardType,
+      }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: kDarkBlue,
-                fontFamily: 'Almarai')),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: kDarkBlue,
+            fontFamily: 'Almarai',
+          ),
+        ),
         const SizedBox(height: 6),
         TextField(
           controller: ctrl,
@@ -790,8 +934,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
             filled: true,
             fillColor: kBg,
             border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
             contentPadding: const EdgeInsets.all(12),
           ),
         ),
@@ -800,6 +945,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen>
   }
 }
 
+// ============================================================================
+// 🧩 Dropdown مستقل
+// ============================================================================
 
 class _IndependentDrop extends StatefulWidget {
   final String? value;
@@ -852,9 +1000,10 @@ class _IndependentDropState extends State<_IndependentDrop> {
             style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
           ),
           style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF1A2340),
-              fontFamily: 'Almarai'),
+            fontSize: 11,
+            color: _AppColors.kTextDark,
+            fontFamily: 'Almarai',
+          ),
           iconSize: 14,
           alignment: Alignment.center,
           onChanged: widget.enabled
@@ -876,11 +1025,19 @@ class _IndependentDropState extends State<_IndependentDrop> {
   }
 }
 
+// ============================================================================
+// 🏷️ Chip
+// ============================================================================
+
 class _Chip extends StatelessWidget {
   final String label, value;
   final Color color;
-  const _Chip(
-      {required this.label, required this.value, required this.color});
+
+  const _Chip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) => Flexible(
@@ -894,14 +1051,18 @@ class _Chip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 9, color: color.withOpacity(0.8))),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: color)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 9, color: color.withOpacity(0.8)),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
         ],
       ),
     ),

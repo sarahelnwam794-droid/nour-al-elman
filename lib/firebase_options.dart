@@ -31,7 +31,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
         throw UnsupportedError(
@@ -40,29 +40,30 @@ class DefaultFirebaseOptions {
     }
   }
 
+  // ✅ إصلاح: إزالة المسافات من projectId, authDomain, storageBucket
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyAhkHEFE-EmgDNuz4R-QfA0FXS1VJ7ijzE',
     appId: '1:133575437865:web:79770ac89bdaadb114b638',
     messagingSenderId: '133575437865',
-    projectId: 'nourelman -app',
-    authDomain: 'nourelman -app.firebaseapp.com',
-    storageBucket: 'nourelman -app.firebasestorage.app',
+    projectId: 'nourelman-app', // ✅ تم إزالة المسافة
+    authDomain: 'nourelman-app.firebaseapp.com', // ✅ تم إزالة المسافة
+    storageBucket: 'nourelman-app.firebasestorage.app', // ✅ تم إزالة المسافة
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCigQenFQP-46ZFm7BR4Vww8OxSdy35LSs',
     appId: '1:133575437865:android:259fd384ede8c58714b638',
     messagingSenderId: '133575437865',
-    projectId: 'nourelman -app',
-    storageBucket: 'nourelman -app.firebasestorage.app',
+    projectId: 'nourelman-app', // ✅ تم إزالة المسافة
+    storageBucket: 'nourelman-app.firebasestorage.app', // ✅ تم إزالة المسافة
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDFCkN9YClTFrdtgfj3oMkLGkrS2LqubGU',
     appId: '1:133575437865:ios:1bd05cd371f05cad14b638',
     messagingSenderId: '133575437865',
-    projectId: 'nourelman -app',
-    storageBucket: 'nourelman -app.firebasestorage.app',
+    projectId: 'nourelman-app', // ✅ تم إزالة المسافة
+    storageBucket: 'nourelman-app.firebasestorage.app', // ✅ تم إزالة المسافة
     iosBundleId: 'com.example.project1',
   );
 
@@ -70,8 +71,8 @@ class DefaultFirebaseOptions {
     apiKey: 'AIzaSyDFCkN9YClTFrdtgfj3oMkLGkrS2LqubGU',
     appId: '1:133575437865:ios:1bd05cd371f05cad14b638',
     messagingSenderId: '133575437865',
-    projectId: 'nourelman -app',
-    storageBucket: 'nourelman -app.firebasestorage.app',
+    projectId: 'nourelman-app', // ✅ تم إزالة المسافة
+    storageBucket: 'nourelman-app.firebasestorage.app', // ✅ تم إزالة المسافة
     iosBundleId: 'com.example.project1',
   );
 
@@ -79,8 +80,8 @@ class DefaultFirebaseOptions {
     apiKey: 'AIzaSyAhkHEFE-EmgDNuz4R-QfA0FXS1VJ7ijzE',
     appId: '1:133575437865:web:07f494c6df02246614b638',
     messagingSenderId: '133575437865',
-    projectId: 'nourelman -app',
-    authDomain: 'nourelman -app.firebaseapp.com',
-    storageBucket: 'nourelman -app.firebasestorage.app',
+    projectId: 'nourelman-app', // ✅ تم إزالة المسافة
+    authDomain: 'nourelman-app.firebaseapp.com', // ✅ تم إزالة المسافة
+    storageBucket: 'nourelman-app.firebasestorage.app', // ✅ تم إزالة المسافة
   );
 }

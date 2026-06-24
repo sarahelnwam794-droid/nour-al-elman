@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:dio/dio.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'session_model.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'student_attendance_screen.dart' as attendance;
-import 'session_model.dart';
 import 'grading_exams_screen.dart';
 class GroupDetailsDashboard extends StatefulWidget {
   final int groupId;

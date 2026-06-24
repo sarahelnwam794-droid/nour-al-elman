@@ -23,7 +23,6 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
   Student? _selectedStudent;
   dynamic _selectedExam;
   List<dynamic> _exams = [];
-  bool _isLoadingExams = true;
   bool _showErrors = false;
   String _statusMessage = "جاري التحميل...";
 
@@ -39,7 +38,6 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
   Future<void> _fetchExams() async {
     if (!mounted) return;
     setState(() {
-      _isLoadingExams = true;
       _statusMessage = "جاري التحميل...";
       _exams = [];
     });
@@ -61,14 +59,12 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
         if (mounted) {
           setState(() {
             _exams = data;
-            _isLoadingExams = false;
             _statusMessage = data.isEmpty ? "لا توجد اختبارات مضافة" : "اختر اسم الاختبار";
           });
         }
       } else {
         if (mounted) {
           setState(() {
-            _isLoadingExams = false;
             _statusMessage = "خطأ من السيرفر: ${res.statusCode}";
           });
         }
@@ -76,7 +72,6 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isLoadingExams = false;
           _statusMessage = "فشل الاتصال.. اضغط للتحديث";
         });
       }
@@ -84,6 +79,7 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
   }
 
   Future<void> _submitGrading() async {
+    if (!mounted) return;
     setState(() => _showErrors = true);
 
     if (_selectedStudent == null ||
@@ -145,142 +141,158 @@ class _GradingExamsScreenState extends State<GradingExamsScreen> {
   }
 
   @override
+  void dispose() {
+    _gradeController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
-        body: SingleChildScrollView(
+        appBar: AppBar(
+          title: const Text("تقييم الاختبارات"),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Color(0xFF2E3542)),
+        ),
+        body: ListView(
           padding: const EdgeInsets.all(20),
-          child: Container(
-            padding: const EdgeInsets.all(25),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildLabel("اسم الطالب"),
-                _buildDropdown<Student>(
-                  hint: "اختر اسم الطالب",
-                  value: _selectedStudent,
-                  items: widget.students
-                      .map((s) => DropdownMenuItem(
-                      value: s,
-                      child: Text(s.name,
-                          style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedStudent = v),
-                ),
-                if (_showErrors && _selectedStudent == null)
-                  _buildErrorText("برجاء اختيار اسم الطالب"),
-
-                const SizedBox(height: 25),
-
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildLabel("اسم الاختبار"),
-                          _buildDropdown<dynamic>(
-                            hint: _statusMessage,
-                            value: _selectedExam,
-                            items: _exams.isEmpty
-                                ? [
-                              DropdownMenuItem(
-                                  value: "retry",
-                                  child: Text(
-                                      "إعادة محاولة التحميل 🔄",
-                                      style: TextStyle(
-                                          color: Colors.blue,
-                                          fontSize: 13)))
-                            ]
-                                : _exams
-                                .map((e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(
-                                    e["name"] ??
-                                        e["examName"] ??
-                                        "اختبار بدون اسم",
-                                    style: const TextStyle(
-                                        fontSize: 13))))
-                                .toList(),
-                            onChanged: (v) {
-                              if (v == "retry") {
-                                _fetchExams();
-                              } else {
-                                setState(() => _selectedExam = v);
-                              }
-                            },
-                          ),
-                          if (_showErrors && _selectedExam == null)
-                            _buildErrorText("برجاء اختيار اسم الاختبار!"),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 1,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildLabel("الدرجة"),
-                          TextField(
-                            controller: _gradeController,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            decoration: _inputDecoration("الدرجة"),
-                          ),
-                          if (_showErrors && _gradeController.text.isEmpty)
-                            _buildErrorText("ادخل الدرجة!"),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 25),
-                _buildLabel("التعليق"),
-                TextField(
-                  controller: _noteController,
-                  maxLines: 5,
-                  decoration: _inputDecoration("اكتب هنا..."),
-                ),
-                if (_showErrors && _noteController.text.isEmpty)
-                  _buildErrorText("تعليق المعلم مطلوب!"),
-
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD17820),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4)),
-                    ),
-                    onPressed: _submitGrading,
-                    child: const Text("حفظ",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold)),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildLabel("اسم الطالب"),
+                  _buildDropdown<Student>(
+                    hint: "اختر اسم الطالب",
+                    value: _selectedStudent,
+                    items: widget.students
+                        .map((s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(s.name,
+                            style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedStudent = v),
                   ),
-                ),
-              ],
+                  if (_showErrors && _selectedStudent == null)
+                    _buildErrorText("برجاء اختيار اسم الطالب"),
+
+                  const SizedBox(height: 25),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel("اسم الاختبار"),
+                            _buildDropdown<dynamic>(
+                              hint: _statusMessage,
+                              value: _selectedExam,
+                              items: _exams.isEmpty
+                                  ? [
+                                DropdownMenuItem(
+                                    value: "retry",
+                                    child: Text(
+                                        "إعادة محاولة التحميل 🔄",
+                                        style: TextStyle(
+                                            color: Colors.blue,
+                                            fontSize: 13)))
+                              ]
+                                  : _exams
+                                  .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(
+                                      e["name"] ??
+                                          e["examName"] ??
+                                          "اختبار بدون اسم",
+                                      style: const TextStyle(
+                                          fontSize: 13))))
+                                  .toList(),
+                              onChanged: (v) {
+                                if (v == "retry") {
+                                  _fetchExams();
+                                } else {
+                                  setState(() => _selectedExam = v);
+                                }
+                              },
+                            ),
+                            if (_showErrors && _selectedExam == null)
+                              _buildErrorText("برجاء اختيار اسم الاختبار!"),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 1,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel("الدرجة"),
+                            TextField(
+                              controller: _gradeController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              decoration: _inputDecoration("الدرجة"),
+                            ),
+                            if (_showErrors && _gradeController.text.isEmpty)
+                              _buildErrorText("ادخل الدرجة!"),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 25),
+                  _buildLabel("التعليق"),
+                  TextField(
+                    controller: _noteController,
+                    maxLines: 5,
+                    decoration: _inputDecoration("اكتب هنا..."),
+                  ),
+                  if (_showErrors && _noteController.text.isEmpty)
+                    _buildErrorText("تعليق المعلم مطلوب!"),
+
+                  const SizedBox(height: 40),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD17820),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: _submitGrading,
+                      child: const Text("حفظ التقييم",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
+  // باقي الدوال كما هي (بدون تغيير)
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

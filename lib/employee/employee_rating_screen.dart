@@ -35,7 +35,6 @@ class _EmployeeRatingScreenState extends State<EmployeeRatingScreen> {
   final ScrollController _scrollCtrl  = ScrollController();
   final ScrollController _hScrollCtrl = ScrollController();
   final TextEditingController _searchCtrl = TextEditingController();
-  static const double _tableWidth = 556.0;
 
   @override
   void initState() {
@@ -192,16 +191,6 @@ class _EmployeeRatingScreenState extends State<EmployeeRatingScreen> {
     final bonus = int.tryParse(item['bonus']?.toString() ?? '0') ?? 0;
     if (bonus > 0) return bonus.toDouble();
     return (int.tryParse(item['deduction']?.toString() ?? '0') ?? 0).toDouble();
-  }
-
-  String _formatDate(String? s) {
-    if (s == null) return '---';
-    try {
-      final dt = DateTime.parse(s);
-      const mo = ['يناير','فبراير','مارس','أبريل','مايو','يونيو',
-        'يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-      return '${dt.day} ${mo[dt.month - 1]} ${dt.year}';
-    } catch (_) { return s.length >= 10 ? s.substring(0, 10) : s; }
   }
 
   void _showSnack(String msg, Color color) {

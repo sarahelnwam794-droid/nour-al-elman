@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../login_screen.dart';
+import '../services/auth_service.dart';
 import 'student_exams_widget.dart';
 import 'student_courses_widget.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:http_parser/http_parser.dart';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import '../services/base_api_service.dart';
+
+
+
+
 const Color kPrimaryBlue = Color(0xFF07427C);
 const Color kSecondaryBlue = Color(0xFFEBF4FF);
 const Color kTextDark = Color(0xFF2E3542);
@@ -27,7 +31,7 @@ class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({super.key, this.loginData});
 
   @override
-  _StudentHomeScreenState createState() => _StudentHomeScreenState();
+  State<StudentHomeScreen> createState() => _StudentHomeScreenState();
 }
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProviderStateMixin {
@@ -36,9 +40,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
   bool _isAttendanceLoading = false;
   Map<String, dynamic>? studentFullData;
   List<dynamic> attendanceList = [];
-
+  final BaseApiService _apiService = BaseApiService();
+  bool _isRefreshing = false;
   late AnimationController _pageAnimationController;
   late Animation<Offset> _slideAnimation;
+  final Set<int> _loadedTabIndices = {0};
 
   List<dynamic> examsList = [];
   bool _isExamsLoading = false;
@@ -46,21 +52,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
   bool _isCoursesLoading = false;
   String? token;
   List<dynamic> studentTasksList = [];
-  bool _isFileUploaded = false;
-  bool _isAnswerSubmitted = false;
   bool _isTasksLoading = false;
-  String? _taskErrorMessage;
   final TextEditingController _answerController = TextEditingController();
   int? _expandedIndex;
   List<File> _pendingFiles = [];
   List<String> _pendingFileNames = [];
   Map<String, dynamic>? _pendingTask;
-  Set<int> _answeredTaskIds = {};
-  Set<int> _uploadedTaskIds = {};
 
   @override
   void initState() {
     super.initState();
+
     _pageAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -74,8 +76,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       curve: Curves.easeOutCubic,
     ));
 
-    _loadInitialData();
+    // ✅ استخدام addPostFrameCallback لتأخير كل من:
+    // 1. جلب البيانات (اللي فيها setState)
+    // 2. تشغيل الأنيميشن
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadInitialData();
       _pageAnimationController.forward();
     });
   }
@@ -83,32 +88,32 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
   @override
   void dispose() {
     _pageAnimationController.dispose();
+    _answerController.dispose();
     super.dispose();
   }
-  Future<void> _loadSavedTaskIds() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String studentId = studentFullData?['id']?.toString() ?? '';
-    final List<String> answered = prefs.getStringList('answered_tasks_$studentId') ?? [];
-    final List<String> uploaded = prefs.getStringList('uploaded_tasks_$studentId') ?? [];
-    if (mounted) {
-      setState(() {
-        _answeredTaskIds = answered.map((e) => int.tryParse(e) ?? -1).toSet();
-        _uploadedTaskIds = uploaded.map((e) => int.tryParse(e) ?? -1).toSet();
-      });
+
+  void _ensureTabDataLoaded(int index) {
+    if (_loadedTabIndices.contains(index)) return;
+    _loadedTabIndices.add(index);
+
+    final String studentId = studentFullData?['id']?.toString() ?? "";
+    if (studentId.isEmpty) return;
+
+    switch (index) {
+      case 1:
+        _fetchAttendance(studentId);
+        break;
+      case 2:
+        _fetchCourses();
+        break;
+      case 3:
+        _fetchStudentTasks();
+        break;
+      case 4:
+        _fetchExams(studentId);
+        break;
     }
   }
-
-  Future<void> _saveAnsweredTaskId(int id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String studentId = studentFullData?['id']?.toString() ?? '';
-    final List<String> current = prefs.getStringList('answered_tasks_$studentId') ?? [];
-    if (!current.contains(id.toString())) {
-      current.add(id.toString());
-      await prefs.setStringList('answered_tasks_$studentId', current);
-    }
-    if (mounted) setState(() => _answeredTaskIds.add(id));
-  }
-
   Future<void> _saveUploadedTaskId(int id) async {
     final prefs = await SharedPreferences.getInstance();
     final String studentId = studentFullData?['id']?.toString() ?? '';
@@ -117,31 +122,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       current.add(id.toString());
       await prefs.setStringList('uploaded_tasks_$studentId', current);
     }
-    if (mounted) setState(() => _uploadedTaskIds.add(id));
-  }
-
-  Future<void> testAllEndpoints() async {
-    String stId = studentFullData?['id']?.toString() ?? "5";
-    String levelId = studentFullData?['levelId']?.toString() ?? "1";
-
-    List<Map<String, String>> endpoints = [
-      {'name': 'Profile', 'url': '$baseUrl/Student/GetById?id=$stId'},
-      {'name': 'Attendance', 'url': '$baseUrl/Student/GetAttendaceByStudentId?id=$stId'},
-      {'name': 'Tasks (Type 1)', 'url': '$baseUrl/Student/GetAllTasksBsedOnType?stId=$stId&levelId=$levelId&typeId=1'},
-      {'name': 'Tasks (Type 2)', 'url': '$baseUrl/Student/GetAllTasksBsedOnType?stId=$stId&levelId=$levelId&typeId=2'},
-      {'name': 'Exams', 'url': '$baseUrl/Student/GetExam?id=$stId'},
-    ];
-
-    print("--- 🔍 Testing Endpoints Status ---");
-    for (var ep in endpoints) {
-      try {
-        final res = await http.get(Uri.parse(ep['url']!));
-        print(" ${ep['name']}: Status ${res.statusCode} | Data: ${res.body.substring(0, res.body.length > 50 ? 50 : res.body.length)}...");
-      } catch (e) {
-        print(" ${ep['name']}: Failed | Error: $e");
-      }
-    }
-    print("-----------------------------------");
   }
 
   String _getEvaluationText(dynamic value) {
@@ -162,10 +142,28 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
     final prefs = await SharedPreferences.getInstance();
     String? token = widget.loginData?['token']?.toString() ?? prefs.getString('user_token');
     String? numericId = widget.loginData?['userId']?.toString() ?? prefs.getString('user_id');
-    debugPrint("DEBUG: numericId from loginData: $numericId");
+
     if (numericId != null && numericId.isNotEmpty && numericId != "0" && numericId != "null") {
+      final cacheKey = 'student_profile_$numericId';
+      final cached = await _apiService.getWithCache(
+        endpoint: '/Student/GetById?id=$numericId',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 10),
+        headers: token != null ? {'Authorization': 'Bearer $token'} : null,
+      );
+
+      if (mounted && cached['fromCache'] == true) {
+        final cachedProfile = cached['data']?['data'];
+        if (cachedProfile != null) {
+          setState(() {
+            studentFullData = cachedProfile;
+            _isLoading = false;
+          });
+        }
+      }
+
       await prefs.setString('student_id', numericId);
-      await _fetchStudentProfile(numericId, token);
+      await _fetchStudentProfile(numericId, token, silent: true);
       return;
     }
     String? savedGuid = widget.loginData?['user_Id']?.toString() ?? prefs.getString('user_guid');
@@ -217,111 +215,30 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
     }
   }
 
-  Future<void> _fetchStudentProfile(String id, String? token) async {
+  Future<void> _fetchStudentProfile(String id, String? token, {bool silent = false}) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/Student/GetById?id=$id'),
-        headers: { if (token != null) 'Authorization': 'Bearer $token' },
+      final cacheKey = 'student_profile_$id';
+
+      final result = await _apiService.getWithCache(
+        endpoint: '/Student/GetById?id=$id',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 10),
+        headers: token != null ? {'Authorization': 'Bearer $token'} : null,
       );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+
+      final data = result['data'];
+
+      if (mounted) {
         setState(() {
           studentFullData = data['data'];
           _isLoading = false;
         });
-        _fetchAttendance(id);
-        _fetchCourses();
-        _fetchStudentTasks();
-        _loadSavedTaskIds();
-      } else if (response.statusCode == 400 && id.contains('-')) {
-        _rescueByUserName(token);
-      } else {
-        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Error in Fetch Profile: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  Future<void> _rescueByUserName(String? token) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/Student/GetAll'),
-        headers: { if (token != null) 'Authorization': 'Bearer $token' },
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> allStudents = jsonDecode(response.body)['data'] ?? [];
-        String targetPhone = widget.loginData?['phoneNumber']?.toString().trim() ?? "";
-        String targetName = widget.loginData?['userName']?.toString().toLowerCase().trim() ?? "";
-        dynamic matchedStudent;
-        matchedStudent = allStudents.firstWhere(
-              (s) => s['phoneNumber']?.toString().trim() == targetPhone,
-          orElse: () => null,
-        );
-        if (matchedStudent == null) {
-          matchedStudent = allStudents.firstWhere(
-                (s) {
-              String sName = (s['userName'] ?? "").toString().toLowerCase();
-              return (sName.isNotEmpty && sName.contains(targetName)) ||
-                  s.toString().toLowerCase().contains(targetName);
-            },
-            orElse: () => null,
-          );
-        }
-        if (matchedStudent == null) {
-          debugPrint("DEBUG: Could not find student - no fallback used");
-          if (mounted) setState(() => _isLoading = false);
-          return;
-        }
-        if (matchedStudent != null) {
-          String realId = matchedStudent['id'].toString();
-          setState(() {
-            studentFullData = matchedStudent;
-            _isLoading = false;
-          });
-          _fetchStudentProfile(realId, token);
-        }
-      }
-    } catch (e) {
-      debugPrint("Rescue Error: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-  void _setupStudentData(Map<String, dynamic> data) async {
-    String numericId = data['id'].toString();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_id', numericId);
-
-    if (mounted) {
-      setState(() {
-        studentFullData = data;
-        _isLoading = false;
-      });
-      _fetchAttendance(numericId);
-    }
-  }
-  void _handleSuccessfulProfile(Map<String, dynamic> data) async {
-    String numericId = data['id'].toString();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_id', numericId);
-    if (mounted) {
-      setState(() {
-        studentFullData = data;
-        _isLoading = false;
-      });
-      _fetchAttendance(numericId);
-    }
-  }
-  void _processProfileData(Map<String, dynamic> data) {
-    if (!mounted) return;
-    setState(() {
-      studentFullData = data;
-      _isLoading = false;
-    });
-    debugPrint("DEBUG: UI Updated with Student ID: ${data['id']}");
-  }
-
   Future<void> _fetchStudentTasks() async {
     if (!mounted) return;
     setState(() {
@@ -331,36 +248,27 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? token = prefs.getString('user_token');
+      final token = prefs.getString('user_token');
+      final stId = studentFullData?['id']?.toString() ?? "5";
+      final levelId = studentFullData?['levelId']?.toString() ?? "1";
+      final cacheKey = 'student_tasks_$stId';
 
-      String stId = studentFullData?['id']?.toString() ?? "5";
-      String levelId = studentFullData?['levelId']?.toString() ?? "1";
+      final result = await _apiService.getWithCache(
+        endpoint: '/Student/GetAllTasksBsedOnType?Stid=$stId&Levelid=$levelId&TypeId=-3',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 3),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
 
-      final headers = {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
+      final data = result['data'];
+      final allTasks = data['data'] ?? [];
 
-      // TypeId=-3 بيرجع كل الأنواع (1 و 2) مع بعض
-      final url = Uri.parse('$baseUrl/Student/GetAllTasksBsedOnType?Stid=$stId&Levelid=$levelId&TypeId=-3');
-      debugPrint("📡 Fetching tasks from: $url");
-
-      final response = await http.get(url, headers: headers);
-      debugPrint("📥 Tasks Status: ${response.statusCode}");
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        final List<dynamic> allTasks = decoded['data'] ?? [];
-
-        debugPrint("🔍 All tasks breakdown:");
-        for (final t in allTasks) {
-          debugPrint("  ID=${t['id']} typeId=${t['typeId']} name=${t['name']} exams=${(t['studentExams'] as List? ?? []).length}");
-        }
-
+      if (mounted) {
         setState(() {
           studentTasksList = allTasks;
-          _taskErrorMessage = allTasks.isEmpty ? "لا يوجد أعمال حالية" : null;
         });
         debugPrint("✅ Tasks Loaded: ${allTasks.length} items");
       }
@@ -368,58 +276,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       debugPrint("❌ Error: $e");
     } finally {
       if (mounted) setState(() => _isTasksLoading = false);
-    }
-  }
-  Future<void> _updateStudentProfile() async {
-    if (studentFullData == null) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      String? token = prefs.getString('user_token');
-
-      Map<String, dynamic> body = {
-        "id": studentFullData!['id'],
-        "name": studentFullData!['name'],
-        "phone": studentFullData!['phone'],
-        "address": studentFullData!['address'],
-        "parentJob": studentFullData!['parentJob'] ?? "",
-        "governmentSchool": studentFullData!['governmentSchool'] ?? "",
-        "attendanceType": studentFullData!['attendanceType'] ?? "",
-        "birthDate": studentFullData!['birthDate'] ?? DateTime.now().toIso8601String(),
-        "locId": studentFullData!['locId'] ?? 0,
-        "phone2": studentFullData!['phone2'] ?? "",
-        "groupId": studentFullData!['groupId'] ?? 0,
-        "levelId": studentFullData!['levelId'] ?? 0,
-        "joinDate": studentFullData!['joinDate'] ?? DateTime.now().toIso8601String(),
-        "paymentType": studentFullData!['paymentType'] ?? "",
-        "documentType": studentFullData!['documentType'] ?? "",
-        "typeInfamily": studentFullData!['typeInfamily'] ?? "",
-        "loc": studentFullData!['loc'],
-        "group": studentFullData!['group'],
-        "level": studentFullData!['level'],
-      };
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/Student/Update'),
-        headers: {
-          'accept': 'text/plain',
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint(" Update Successful");
-        _fetchStudentProfile(studentFullData!['id'].toString(), token);
-      } else {
-        debugPrint(" Update Failed: ${response.body}");
-      }
-    } catch (e) {
-      debugPrint(" Update Error: $e");
-    } finally {
-      setState(() => _isLoading = false);
     }
   }
   Widget _buildNoUploadsCard() {
@@ -454,7 +310,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       final prefs = await SharedPreferences.getInstance();
       String? token = prefs.getString('user_token');
       final queryParams = {
-        'examdId': task['id'].toString(),  // السيرفر بيستخدم examdId مش examId
+        'examdId': task['id'].toString(),
         'levelId': task['levelId'].toString(),
         'typeId': task['typeId'].toString(),
         'stId': studentFullData?['id']?.toString() ?? "5",
@@ -462,7 +318,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       };
       final uri = Uri.parse('https://nourelman.runasp.net/api/StudentCources/UploadStudentExamWithNoFile')
           .replace(queryParameters: queryParams);
-      debugPrint(" Submitting to: $uri");
+
       final response = await http.post(
         uri,
         headers: {
@@ -470,8 +326,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
           if (token != null) 'Authorization': 'Bearer $token',
         },
       );
+
       if (response.statusCode == 200) {
         _answerController.clear();
+
+        // ✅ مسح الكاش بعد الإرسال
+        final stId = studentFullData?['id']?.toString() ?? "5";
+        await _apiService.invalidateCache('student_tasks_$stId');
+
         await _fetchStudentTasks();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -508,57 +370,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
         "لقد أجبت على سؤال هذا الاسبوع بنجاح\nانتظر حتى يتم رفع سؤال اخر",
         textAlign: TextAlign.center,
         style: TextStyle(color: Color(0xFF27AE60), fontSize: 20, fontWeight: FontWeight.bold, height: 1.5),
-      ),
-    );
-  }
-  Widget _buildTaskHeaderCard(Map<String, dynamic> task) {
-    final bool isArabic = Localizations.localeOf(context).languageCode == 'ar';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20), // تكبير الكارت
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
-        ],
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: isArabic ? CrossAxisAlignment.start : CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "الإسم: ${task['name']}",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "التفاصيل: ${task['description']}",
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          InkWell(
-            onTap: () => _handlePickFile(task: task),
-            child: Row(
-              children: [
-                Text(
-                  isArabic ? "رفع الملف" : "Upload File",
-                  style: const TextStyle(color: Color(0xFFD35400), fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.upload_outlined, color: Color(0xFFD35400), size: 28),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -657,6 +468,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
     final filesToUpload = List<File>.from(_pendingFiles);
     final taskSnapshot = _pendingTask;
     setState(() { _pendingFiles = []; _pendingFileNames = []; _pendingTask = null; });
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('user_token');
@@ -708,6 +520,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       } catch (_) {
         isDone = responseBody.contains('Done');
       }
+
       if (response.statusCode == 200 && isDone) {
         successCount = 1;
       } else {
@@ -719,16 +532,26 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
           if (taskSnapshot != null) {
             await _saveUploadedTaskId(taskSnapshot['id'] ?? -1);
           }
+
+          // ✅ مسح الكاش بعد رفع الملف بنجاح
+          final stId = studentFullData?['id']?.toString() ?? "5";
+          await _apiService.invalidateCache('student_tasks_$stId');
+
+          // إعادة تحميل المهام
           _fetchStudentTasks();
+
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text("✅ تم رفع $successCount ملف بنجاح"), backgroundColor: Colors.green));
+              content: Text("✅ تم رفع $successCount ملف بنجاح"),
+              backgroundColor: Colors.green
+          ));
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text("❌ فشل الرفع - كود: ${response.statusCode}\n${response.body.length > 80 ? response.body.substring(0, 80) : response.body}"),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 6),
-              ));
+              )
+          );
         }
       }
     } catch (e, stackTrace) {
@@ -736,8 +559,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       debugPrint("❌ Error: $e");
       debugPrint("❌ StackTrace: $stackTrace");
       debugPrint("❌ ================================");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ خطأ: $e"), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text("❌ خطأ: $e"),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 6)
+            )
+        );
+      }
     } finally {
       if (mounted) setState(() => _isTasksLoading = false);
     }
@@ -888,72 +718,114 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       ),
     );
   }
-  Future<void> _pickFile() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'png', 'jpeg'],
-      );
-
-      if (result != null) {
-        PlatformFile file = result.files.first;
-        print("تم اختيار ملف: ${file.name}");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("تم اختيار: ${file.name}")),
-        );
-      } else {
-        print("لم يتم اختيار أي ملف");
-      }
-    } catch (e) {
-      print("خطأ أثناء اختيار الملف: $e");
-    }
-  }
-  Future<void> _submitTask(int taskId) async {
-    print("جاري حفظ الإجابة للمهمة رقم: $taskId");
-  }
   Future<void> _fetchExams(String id) async {
+    if (!mounted) return;
     setState(() => _isExamsLoading = true);
     try {
-      final response = await http.get(Uri.parse('$baseUrl/Student/GetExam?id=$id'));
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        setState(() { examsList = responseData['data'] != null ? [responseData['data']] : []; });
-      }
-    } catch (e) { debugPrint("Exams Error: $e"); }
-    finally { if (mounted) setState(() => _isExamsLoading = false); }
-  }
+      final cacheKey = 'student_exams_$id';
 
-  Future<void> _fetchCourses() async {
-    setState(() => _isCoursesLoading = true);
-    try {
-      String stId = studentFullData?['id']?.toString() ?? "";
-      String levelId = studentFullData?['levelId']?.toString() ?? "1";
-      final response = await http.get(Uri.parse('$baseUrl/Student/GetAllTasksBsedOnType?Stid=$stId&Levelid=$levelId&Typeid=3'));
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        setState(() { coursesList = responseData['data'] ?? []; });
+      final result = await _apiService.getWithCache(
+        endpoint: '/Student/GetExam?id=$id',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 15),
+      );
+
+      final data = result['data'];
+
+      if (mounted) {
+        setState(() {
+          examsList = data['data'] != null ? [data['data']] : [];
+        });
       }
-    } catch (e) { debugPrint("Courses Error: $e"); }
-    finally { if (mounted) setState(() => _isCoursesLoading = false); }
+    } catch (e) {
+      debugPrint("Exams Error: $e");
+    } finally {
+      if (mounted) setState(() => _isExamsLoading = false);
+    }
+  }
+  // ✅ دالة لتحديث كل البيانات يدوياً
+  Future<void> _refreshAllData() async {
+    if (_isRefreshing) return;
+
+    final studentId = studentFullData?['id']?.toString() ?? "";
+    if (studentId.isEmpty) return;
+
+    setState(() => _isRefreshing = true);
+
+    try {
+      // مسح الكاش للبيانات
+      await _apiService.invalidateCache('student_profile_$studentId');
+      await _apiService.invalidateCache('student_attendance_$studentId');
+      await _apiService.invalidateCache('student_tasks_$studentId');
+      await _apiService.invalidateCache('student_exams_$studentId');
+
+      // إعادة التحميل
+      await _fetchStudentProfile(studentId, null);
+    } catch (e) {
+      debugPrint("Refresh Error: $e");
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
   Future<void> _fetchAttendance(String id) async {
+    if (!mounted) return;
     setState(() => _isAttendanceLoading = true);
     try {
-      final response = await http.get(Uri.parse('$baseUrl/Student/GetAttendaceByStudentId?id=$id'));
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        setState(() { attendanceList = responseData['data'] ?? []; });
+      final cacheKey = 'student_attendance_$id';
+
+      final result = await _apiService.getWithCache(
+        endpoint: '/Student/GetAttendaceByStudentId?id=$id',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 3),
+      );
+
+      final data = result['data'];
+
+      if (mounted) {
+        setState(() {
+          attendanceList = data['data'] ?? [];
+        });
       }
-    } catch (e) { debugPrint("Attendance Error: $e"); }
-    finally { if (mounted) setState(() => _isAttendanceLoading = false); }
+    } catch (e) {
+      debugPrint("Attendance Error: $e");
+    } finally {
+      if (mounted) setState(() => _isAttendanceLoading = false);
+    }
+  }
+  Future<void> _fetchCourses() async {
+    if (!mounted) return;
+    setState(() => _isCoursesLoading = true);
+    try {
+      final stId = studentFullData?['id']?.toString() ?? "";
+      final levelId = studentFullData?['levelId']?.toString() ?? "1";
+      final cacheKey = 'student_courses_$stId';
+
+      final result = await _apiService.getWithCache(
+        endpoint: '/Student/GetAllTasksBsedOnType?Stid=$stId&Levelid=$levelId&Typeid=3',
+        cacheKey: cacheKey,
+        cacheDuration: const Duration(minutes: 5),
+      );
+
+      final data = result['data'];
+
+      if (mounted) {
+        setState(() {
+          coursesList = data['data'] ?? [];
+        });
+      }
+    } catch (e) {
+      debugPrint("Courses Error: $e");
+    } finally {
+      if (mounted) setState(() => _isCoursesLoading = false);
+    }
   }
 
   void _forceLogout() async {
     if (!mounted) return;
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -964,7 +836,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
             content: const Text("هل أنت متأكد أنك تريد تسجيل الخروج من التطبيق؟"),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text("إلغاء", style: TextStyle(color: kLabelGrey)),
               ),
               ElevatedButton(
@@ -974,15 +846,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.clear();
-                  if (mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) =>  LoginScreen()),
-                          (route) => false,
-                    );
-                  }
+                  await AuthService.clearSession();
+                  if (!dialogContext.mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    dialogContext,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        (route) => false,
+                  );
                 },
                 child: const Text("خروج"),
               ),
@@ -992,17 +862,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       },
     );
   }
-
-
   @override
   Widget build(BuildContext context) {
     final bool isArabic = Localizations.localeOf(context).languageCode == 'ar';
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: kPrimaryBlue)));
 
     return Directionality(
-      textDirection: Localizations.localeOf(context).languageCode == 'ar'
-          ? TextDirection.rtl
-          : TextDirection.ltr,
+      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: const Color(0xFFF9FAFB),
         appBar: AppBar(
@@ -1010,19 +876,32 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
           elevation: 0.5,
           iconTheme: const IconThemeData(color: kPrimaryBlue),
           title: Text(_titles[_selectedIndex], style: const TextStyle(color: kPrimaryBlue, fontSize: 16, fontWeight: FontWeight.bold)),
+          actions: [
+            // ✅ زر تحديث
+            if (_selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 3)
+              IconButton(
+                icon: _isRefreshing
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryBlue))
+                    : const Icon(Icons.refresh, color: kPrimaryBlue),
+                onPressed: _isRefreshing ? null : _refreshAllData,
+                tooltip: 'تحديث',
+              ),
+          ],
         ),
         drawer: _buildWebSidebar(),
-        body: FadeTransition(
-          opacity: _pageAnimationController,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: _getPage(_selectedIndex),
+        body: RefreshIndicator(  // ✅ إضافة سحب للتحديث
+          onRefresh: _refreshAllData,
+          child: FadeTransition(
+            opacity: _pageAnimationController,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: _getPage(_selectedIndex),
+            ),
           ),
         ),
       ),
     );
   }
-
   final List<String> _titles = ["البيانات الشخصية", "حضور و غياب للمستوي الحالي", "مقررات المستوي", "أعمال الطالب", "الاختبارات"];
 
   Widget _getPage(int index) {
@@ -1067,55 +946,25 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       children: [
         _buildInfoBox("بيانات الطالب", Icons.person_outline, [
-          _infoRow("اسم الطالب :", data?['name'] ?? "---"),
-          _infoRow("كود الطالب :", data?['id']?.toString() ?? "---"),
+          _infoRow("اسم الطالب :", data['name'] ?? "---"),
+          _infoRow("كود الطالب :", data['id']?.toString() ?? "---"),
           _infoRow("المكتب التابع له :", loc?['name'] ?? "---"),
           _infoRow("موعد الالتحاق بالمدرسة :", displayJoinDate),
-          _infoRow("اسم المدرسة الحكومية :", data?['governmentSchool'] ?? "---"),
+          _infoRow("اسم المدرسة الحكومية :", data['governmentSchool'] ?? "---"),
         ]),
         _buildInfoBox("المدرسة", Icons.school_outlined, [
           _infoRow("مجموعة :", group?['name'] ?? "---"),
           _infoRow("المستوى :", level?['name'] ?? "---"),
           _infoRow("اسم المعلم :", group?['emp']?['name'] ?? "---"),
-          _infoRow("الحضور :", data?['attendanceType'] ?? "---"),
+          _infoRow("الحضور :", data['attendanceType'] ?? "---"),
           _infoRow("موعد الحلقة :", sessionTimes),
         ]),
         _buildInfoBox("الاشتراك", Icons.payments_outlined, [
-          _infoRow("نوع الاشتراك :", data?['paymentType'] ?? "---"),
-          _infoRow("حالة الحساب :", data?['documentType'] ?? "---"),
+          _infoRow("نوع الاشتراك :", data['paymentType'] ?? "---"),
+          _infoRow("حالة الحساب :", data['documentType'] ?? "---"),
           _infoRow("عدد النقاط :", loc?['coordinates'] ?? "0"),
         ]),
       ],
-    );
-  }
-  Widget _buildSectionHeader(String title) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-      margin: const EdgeInsets.only(bottom: 15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 18),
-        textAlign: TextAlign.right,
-      ),
-    );
-  }
-
-  Widget _buildNoTasksView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.check_circle_outline, size: 100, color: Colors.green),
-          const SizedBox(height: 20),
-          _buildSuccessMessageCard(),
-        ],
-      ),
     );
   }
   Widget _buildAttendanceTab() {
@@ -1366,11 +1215,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with TickerProvid
               setState(() => _selectedIndex = index);
               _pageAnimationController.reset();
               _pageAnimationController.forward();
-              String studentId = studentFullData?['id']?.toString() ?? "";
-              if (index == 1) _fetchAttendance(studentId);
-              else if (index == 2) _fetchCourses();
-              else if (index == 3) _fetchStudentTasks();
-              else if (index == 4) _fetchExams(studentId);
+              _ensureTabDataLoaded(index);
             }
             Navigator.pop(context);
           }

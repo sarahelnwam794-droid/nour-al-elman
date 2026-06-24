@@ -103,7 +103,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen> {
           ),
           const SizedBox(height: 5),
           Text(
-            value,
+            displayValue,
             style: const TextStyle(
               color: Color(0xFF2E3542),
               fontWeight: FontWeight.bold,

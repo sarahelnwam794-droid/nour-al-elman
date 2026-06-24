@@ -20,10 +20,13 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   List<String> _availableMonths = [];
   int _currentMonthIndex = 0;
 
+// ✅
   @override
   void initState() {
     super.initState();
-    _fetchAttendanceLogs();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchAttendanceLogs();
+    });
   }
 
   DateTime? _parseServerDate(String? dateStr) {
@@ -37,6 +40,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
 
   // ✅ السيرفر هو المصدر الوحيد - لا كاش محلي إطلاقاً
   Future<void> _fetchAttendanceLogs() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -47,8 +51,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       final String? userId = prefs.getString('user_id');
 
       if (userId == null || userId.isEmpty || userId == "0") {
-        _showError("لم يتم العثور على بيانات المستخدم");
-        setState(() => _hasError = true);
+        if (mounted) {
+          _showError("لم يتم العثور على بيانات المستخدم");
+          setState(() => _hasError = true);
+        }
         return;
       }
 
@@ -86,13 +92,17 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
         _processData(records);
       } else {
         debugPrint("❌ Server error: ${response.statusCode}");
-        _showError("فشل في تحميل البيانات من السيرفر (${response.statusCode})");
-        setState(() => _hasError = true);
+        if (mounted) {
+          _showError("فشل في تحميل البيانات من السيرفر (${response.statusCode})");
+          setState(() => _hasError = true);
+        }
       }
     } catch (e) {
       debugPrint("❌ Fetch error: $e");
-      _showError("تعذر الاتصال بالسيرفر، تحقق من الإنترنت وحاول مرة أخرى");
-      setState(() => _hasError = true);
+      if (mounted) {
+        _showError("تعذر الاتصال بالسيرفر، تحقق من الإنترنت وحاول مرة أخرى");
+        setState(() => _hasError = true);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

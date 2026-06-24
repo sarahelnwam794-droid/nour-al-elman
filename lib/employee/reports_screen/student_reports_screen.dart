@@ -370,7 +370,7 @@ class _StudentReportsScreenState extends State<StudentReportsScreen> with Single
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(date == null ? placeholder : DateFormat('yyyy/MM/dd').format(date!), style: const TextStyle(fontSize: 13, color: Colors.grey, fontFamily: 'Almarai')),
+        Text(date == null ? placeholder : DateFormat('yyyy/MM/dd').format(date), style: const TextStyle(fontSize: 13, color: Colors.grey, fontFamily: 'Almarai')),
         const Icon(Icons.calendar_today_outlined, size: 18, color: Colors.grey),
       ]),
     ),

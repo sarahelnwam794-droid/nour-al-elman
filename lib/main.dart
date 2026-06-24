@@ -1,34 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, PlatformDispatcher;
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:intl/date_symbol_data_local.dart';
+
 import 'login_screen.dart';
 import 'student/student_home_screen.dart';
 import 'teacher/teacher_home_screen.dart';
 import 'employee/employee_home_screen.dart';
+import 'services/auth_service.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  if (!kIsWeb) {
-    await FlutterDownloader.initialize(
-      debug: true,
-      ignoreSsl: true,
-    );
-  }
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+  };
 
-  await initializeDateFormatting('ar', null);
-  runApp(const MyApp());
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('Uncaught platform error: $error\n$stack');
+    return true;
+  };
+
+  await runZonedGuarded(() async {
+    try {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    } catch (e, stack) {
+      debugPrint('Firebase initialization failed: $e\n$stack');
+    }
+
+    if (!kIsWeb) {
+      try {
+        await FlutterDownloader.initialize(debug: kDebugMode, ignoreSsl: true);
+      } catch (e, stack) {
+        debugPrint('FlutterDownloader initialization failed: $e\n$stack');
+      }
+    }
+
+    await initializeDateFormatting('ar', null);
+    runApp(const MyApp());
+  }, (Object error, StackTrace stack) {
+    debugPrint('Uncaught zone error: $error\n$stack');
+  });
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -42,13 +61,12 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('ar', 'AE'),
-      ],
+      supportedLocales: const [Locale('ar', 'AE')],
       locale: const Locale('ar', 'AE'),
       theme: ThemeData(
         primarySwatch: Colors.orange,
         fontFamily: 'Almarai',
+        useMaterial3: true,
       ),
       home: const SplashScreen(),
     );
@@ -72,14 +90,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 800),
     );
-
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
 
@@ -87,48 +103,53 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _checkLoginStatus();
   }
 
-  void _checkLoginStatus() async {
-    await Future.delayed(const Duration(seconds: 3));
-
+  Future<void> _checkLoginStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-      final String? loginDataString = prefs.getString('loginData');
+      final session = await AuthService.getValidSession();
 
-      if (isLoggedIn && loginDataString != null && loginDataString.isNotEmpty) {
-        final Map<String, dynamic> responseData = jsonDecode(loginDataString);
-        final int userType = int.tryParse(responseData['userType']?.toString() ?? "0") ?? 0;
+      if (!mounted) return;
 
-        Widget nextScreen;
+      if (session != null) {
+        await AuthService.markSessionActive();
+        final int userType = AuthService.resolveUserType(session);
+        final Widget nextScreen;
+
         if (userType == 1 || userType == 4) {
-          nextScreen = TeacherHomeScreen();
+          nextScreen = TeacherHomeScreen(loginData: session);
         } else if (userType == 2 || userType == 3) {
-          nextScreen = EmployeeHomeScreen();
+          nextScreen = EmployeeHomeScreen(loginData: session);
         } else {
-          nextScreen = StudentHomeScreen(loginData: responseData);
+          nextScreen = StudentHomeScreen(loginData: session);
         }
 
         if (mounted) {
           Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => nextScreen)
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => nextScreen,
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
           );
         }
-      } else {
-        _navigateToLogin();
-      }
-    } catch (e) {
-      debugPrint("Splash Error: $e");
-      _navigateToLogin();
-    }
-  }
-
-  void _navigateToLogin() {
-    if (mounted) {
-      Navigator.pushReplacement(
+      } else if (mounted) {
+        Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => LoginScreen())
-      );
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const LoginScreen(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ),
+        );
+      }
+    } catch (e, stack) {
+      debugPrint('Splash Error: $e\n$stack');
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     }
   }
 
@@ -147,18 +168,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           opacity: _fadeAnimation,
           child: ScaleTransition(
             scale: _scaleAnimation,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(
-                  'assets/full_logo.png',
-                  width: MediaQuery.of(context).size.width * 0.15,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) =>
-                  const Icon(Icons.image, size: 50, color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-              ],
+            child: Image.asset(
+              'assets/full_logo.png',
+              width: MediaQuery.of(context).size.width * 0.45,
+              errorBuilder: (_, __, ___) =>
+              const Icon(Icons.school, size: 100, color: Colors.orange),
             ),
           ),
         ),

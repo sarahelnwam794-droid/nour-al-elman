@@ -36,8 +36,19 @@ class _BranchesScreenState extends State<BranchesScreen> {
     fetchBranches();
   }
 
+// ✅ التأكد من dispose صحيح
   @override
   void dispose() {
+    nameController.dispose();
+    addressController.dispose();
+    lat1Controller.dispose();
+    long1Controller.dispose();
+    lat2Controller.dispose();
+    long2Controller.dispose();
+    lat3Controller.dispose();
+    long3Controller.dispose();
+    lat4Controller.dispose();
+    long4Controller.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -121,14 +132,16 @@ class _BranchesScreenState extends State<BranchesScreen> {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        _showSnackBar("تم الحذف بنجاح", Colors.green);
-      } else {
+        if (mounted) _showSnackBar("تم الحذف بنجاح", Colors.green);
+      } else if (mounted) {
         setState(() => branchesData = backup);
         _showSnackBar("فشل الحذف من السيرفر", Colors.red);
       }
     } catch (e) {
-      setState(() => branchesData = backup);
-      _showSnackBar("خطأ في الاتصال، حاول لاحقاً", Colors.red);
+      if (mounted) {
+        setState(() => branchesData = backup);
+        _showSnackBar("خطأ في الاتصال، حاول لاحقاً", Colors.red);
+      }
     }
   }
 

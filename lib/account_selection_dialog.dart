@@ -26,6 +26,7 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
   late Animation<double> _sheetAnimation;
   late Animation<double> _fadeAnimation;
   int? _pressedIndex;
+  bool _isDismissing = false;
 
   @override
   void initState() {
@@ -51,7 +52,9 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
       curve: Curves.easeIn,
     );
 
-    _sheetController.forward().then((_) => _itemsController.forward());
+    _sheetController.forward().then((_) {
+      if (mounted) _itemsController.forward();
+    });
   }
 
   @override
@@ -62,9 +65,16 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
   }
 
   Future<void> _dismiss() async {
-    _itemsController.reverse();
-    await _sheetController.reverse();
-    if (mounted) Navigator.of(context).pop();
+    if (_isDismissing) return;
+    _isDismissing = true;
+
+    if (mounted) {
+      await _itemsController.reverse();
+      await _sheetController.reverse();
+      if (mounted) Navigator.of(context).pop();
+    }
+
+    _isDismissing = false;
   }
 
   @override
@@ -76,7 +86,6 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
         builder: (context, child) {
           return Stack(
             children: [
-
               GestureDetector(
                 onTap: _dismiss,
                 child: BackdropFilter(
@@ -89,7 +98,6 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                   ),
                 ),
               ),
-
               Align(
                 alignment: Alignment.bottomCenter,
                 child: SlideTransition(
@@ -127,7 +135,6 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-
           const SizedBox(height: 12),
           Container(
             width: 44,
@@ -138,7 +145,6 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
             ),
           ),
           const SizedBox(height: 22),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Row(
@@ -148,7 +154,7 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                   height: 48,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFE8722E), Color(0xFFC66422)],
+                      colors: [Color(0xFFE8722E), _orange],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -161,8 +167,11 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.manage_accounts_rounded,
-                      color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.manage_accounts_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 const Column(
@@ -191,12 +200,14 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
               ],
             ),
           ),
-
           const SizedBox(height: 18),
-          Divider(color: Colors.grey.shade100, thickness: 1, indent: 24, endIndent: 24),
+          Divider(
+            color: Colors.grey.shade100,
+            thickness: 1,
+            indent: 24,
+            endIndent: 24,
+          ),
           const SizedBox(height: 8),
-
-          // قائمة الأكونتات
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
@@ -241,14 +252,22 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
         );
       },
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressedIndex = index),
+        onTapDown: (_) {
+          if (mounted) setState(() => _pressedIndex = index);
+        },
         onTapUp: (_) async {
-          setState(() => _pressedIndex = null);
+          if (mounted) setState(() => _pressedIndex = null);
+          if (!mounted) return;
+
           final selected = account;
           await _dismiss();
-          widget.onSelect(selected);
+          if (mounted) {
+            widget.onSelect(selected);
+          }
         },
-        onTapCancel: () => setState(() => _pressedIndex = null),
+        onTapCancel: () {
+          if (mounted) setState(() => _pressedIndex = null);
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.only(bottom: 10),
@@ -270,19 +289,18 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                 color: _orange.withOpacity(0.12),
                 blurRadius: 14,
                 offset: const Offset(0, 4),
-              )
+              ),
             ]
                 : [
               BoxShadow(
                 color: Colors.black.withOpacity(0.03),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
-              )
+              ),
             ],
           ),
           child: Row(
             children: [
-              // أيقونة النوع
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 46,
@@ -298,12 +316,13 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                         : Colors.grey.shade200,
                   ),
                 ),
-                child: Icon(typeIcon,
-                    color: _pressedIndex == index ? _orange : _darkBlue,
-                    size: 22),
+                child: Icon(
+                  typeIcon,
+                  color: _pressedIndex == index ? _orange : _darkBlue,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,7 +339,9 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: _orange.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
@@ -338,7 +359,6 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
                   ],
                 ),
               ),
-
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 38,
@@ -371,24 +391,34 @@ class _AccountSelectionDialogState extends State<AccountSelectionDialog>
   String _getUserTypeName(dynamic type) {
     int t = int.tryParse(type?.toString() ?? "0") ?? 0;
     switch (t) {
-      case 0: return "طالب";
+      case 0:
+        return "طالب";
       case 1:
-      case 4: return "معلم / معلمة";
-      case 2: return "إدارة";
-      case 3: return "محاسب";
-      default: return "مستخدم";
+      case 4:
+        return "معلم / معلمة";
+      case 2:
+        return "إدارة";
+      case 3:
+        return "محاسب";
+      default:
+        return "مستخدم";
     }
   }
 
   IconData _getUserTypeIcon(dynamic type) {
     int t = int.tryParse(type?.toString() ?? "0") ?? 0;
     switch (t) {
-      case 0: return Icons.school_rounded;
+      case 0:
+        return Icons.school_rounded;
       case 1:
-      case 4: return Icons.cast_for_education_rounded;
-      case 2: return Icons.admin_panel_settings_rounded;
-      case 3: return Icons.calculate_rounded;
-      default: return Icons.person_rounded;
+      case 4:
+        return Icons.cast_for_education_rounded;
+      case 2:
+        return Icons.admin_panel_settings_rounded;
+      case 3:
+        return Icons.calculate_rounded;
+      default:
+        return Icons.person_rounded;
     }
   }
 }

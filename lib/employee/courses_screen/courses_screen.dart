@@ -8,7 +8,6 @@ class CoursesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const Color kActiveBlue = Color(0xFF1976D2);
     const Color darkBlue = Color(0xFF2E3542);
-    const Color kBorderColor = Color(0xFFE2E8F0);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
